@@ -1,0 +1,21 @@
+{
+  "name": "sqlsimcity",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "An explorable 3D city that models how MySQL/InnoDB actually works.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/three": "^0.185.4",
+    "typescript": "^5.9.3",
+    "vite": "^7.0.2"
+  },
+  "dependencies": {
+    "three": "^0.185.1"
+  }
+}

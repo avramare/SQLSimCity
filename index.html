@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="SQLSimCity — an explorable 3D city that models how MySQL and InnoDB actually work: buffer pool, redo log, tablespaces, checkpoints, purge, and replication."
+    />
+    <title>SQLSimCity — how MySQL actually works</title>
+  </head>
+  <body>
+    <canvas id="scene"></canvas>
+    <div id="labels" class="labels"></div>
+
+    <div id="boot" class="boot">
+      <div class="boot-inner">
+        <div class="boot-mark">SQL<span>SIM</span>CITY</div>
+        <div class="boot-bar"><i></i></div>
+        <p>Building the city…</p>
+      </div>
+    </div>
+
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">SQL<span>SIM</span>CITY</span>
+        <span class="brand-sub">a live model of MySQL&nbsp;8.4 · InnoDB</span>
+      </div>
+
+      <div class="metrics" id="metrics">
+        <div class="metric" data-metric="qps" title="Statements executed per second (simulated workload)">
+          <span class="metric-label">throughput</span><span class="metric-value">0</span><span class="metric-unit">qps</span>
+        </div>
+        <div class="metric" data-metric="dirty" title="Share of buffer pool pages modified in memory but not yet written to disk">
+          <span class="metric-label">dirty pages</span><span class="metric-value">0</span><span class="metric-unit">%</span>
+        </div>
+        <div class="metric" data-metric="redo" title="Checkpoint age against innodb_redo_log_capacity — how much redo would need replaying after a crash">
+          <span class="metric-label">checkpoint age</span><span class="metric-value">0</span><span class="metric-unit">% redo</span>
+        </div>
+        <div class="metric" data-metric="hit" title="Buffer pool hit rate: logical reads served without touching disk">
+          <span class="metric-label">pool hit rate</span><span class="metric-value">0</span><span class="metric-unit">%</span>
+        </div>
+        <div class="metric" data-metric="history" title="History list length: un-purged old row versions">
+          <span class="metric-label">history list</span><span class="metric-value">0</span><span class="metric-unit">trx</span>
+        </div>
+        <div class="metric" data-metric="fsync" title="Durable log writes per second — depends on innodb_flush_log_at_trx_commit">
+          <span class="metric-label">fsyncs</span><span class="metric-value">0</span><span class="metric-unit">/s</span>
+        </div>
+        <div class="metric" data-metric="lag" title="Replica lag: how far the applier is behind the source">
+          <span class="metric-label">replica lag</span><span class="metric-value">0</span><span class="metric-unit">ms</span>
+        </div>
+      </div>
+
+      <div class="topbar-actions">
+        <button class="btn" data-action="tour" title="Guided tour (T)">▶ Tour</button>
+        <button class="btn" data-action="palette" title="Command palette (Ctrl/⌘ K)">⌘K</button>
+        <button class="btn" data-action="help" title="Help (H)">?</button>
+      </div>
+    </header>
+
+    <nav class="districts" id="districtBar" aria-label="Districts"></nav>
+
+    <aside class="inspector" id="inspector" aria-live="polite">
+      <button class="inspector-close" data-action="close-inspector" title="Close (Esc)">✕</button>
+      <div class="inspector-body" id="inspectorBody"></div>
+    </aside>
+
+    <section class="controlroom" id="controlroom">
+      <header class="cr-head">
+        <span>Control Room</span>
+        <button class="cr-toggle" data-action="toggle-controlroom" title="Collapse">–</button>
+      </header>
+      <div class="cr-body">
+        <label class="cr-row">
+          <span>workload</span>
+          <input type="range" id="workload" min="0" max="3" step="1" value="1" />
+          <b id="workloadValue">steady</b>
+        </label>
+        <label class="cr-row">
+          <span title="1 = fsync at every commit (ACID). 2 = fsync once per second.">innodb_flush_log_at_trx_commit</span>
+          <select id="flushLog">
+            <option value="1" selected>1 — fsync per commit</option>
+            <option value="2">2 — fsync per second</option>
+            <option value="0">0 — write per second</option>
+          </select>
+        </label>
+        <label class="cr-row">
+          <span title="fsync the binary log at every commit group">sync_binlog</span>
+          <select id="syncBinlog">
+            <option value="1" selected>1 — durable</option>
+            <option value="0">0 — OS decides</option>
+          </select>
+        </label>
+        <label class="cr-row cr-check">
+          <input type="checkbox" id="adaptiveFlush" checked />
+          <span title="Scale flush rate with redo generation instead of waiting for the wall">innodb_adaptive_flushing</span>
+        </label>
+        <label class="cr-row cr-check">
+          <input type="checkbox" id="longTrx" />
+          <span title="An idle open transaction pins the read view and blocks purge">idle long transaction</span>
+        </label>
+        <label class="cr-row cr-check">
+          <input type="checkbox" id="shadows" checked />
+          <span>shadows</span>
+        </label>
+        <div class="cr-row cr-buttons">
+          <button class="btn btn-small" data-action="pause">⏸ Pause</button>
+          <button class="btn btn-small" data-action="labels">Labels: all</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="tour" id="tour" hidden>
+      <div class="tour-head">
+        <span class="tour-step" id="tourStep">1 / 14</span>
+        <span class="tour-title" id="tourTitle"></span>
+        <button class="tour-close" data-action="tour-close" title="End tour (Esc)">✕</button>
+      </div>
+      <p class="tour-body" id="tourBody"></p>
+      <div class="tour-foot">
+        <button class="btn btn-small" data-action="tour-prev">← Back</button>
+        <div class="tour-dots" id="tourDots"></div>
+        <button class="btn btn-small btn-primary" data-action="tour-next">Next →</button>
+      </div>
+    </section>
+
+    <div class="palette" id="palette" hidden>
+      <div class="palette-box" role="dialog" aria-label="Command palette">
+        <input
+          id="paletteInput"
+          type="text"
+          placeholder="Jump to a district, a building, or run a command…"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <ul class="palette-list" id="paletteList"></ul>
+        <footer class="palette-foot">
+          <span><kbd>↑</kbd><kbd>↓</kbd> move</span>
+          <span><kbd>↵</kbd> select</span>
+          <span><kbd>esc</kbd> close</span>
+        </footer>
+      </div>
+    </div>
+
+    <div class="help" id="help" hidden>
+      <div class="help-box" role="dialog" aria-label="Help">
+        <button class="help-close" data-action="help-close">✕</button>
+        <h2>SQLSimCity</h2>
+        <p class="help-lede">
+          Every district is a real MySQL mechanism, every building a real component, and the traffic
+          between them is the actual path a statement takes. Click anything to read what it does.
+        </p>
+        <div class="help-cols">
+          <div>
+            <h3>Move</h3>
+            <dl>
+              <dt>drag</dt><dd>orbit</dd>
+              <dt>right-drag</dt><dd>pan</dd>
+              <dt>wheel</dt><dd>zoom</dd>
+              <dt><kbd>F</kbd></dt><dd>walk in first person</dd>
+              <dt><kbd>WASD</kbd></dt><dd>walk · <kbd>shift</kbd> to run</dd>
+              <dt><kbd>Esc</kbd></dt><dd>leave first person</dd>
+              <dt><kbd>G</kbd></dt><dd>free look / overview</dd>
+            </dl>
+          </div>
+          <div>
+            <h3>Explore</h3>
+            <dl>
+              <dt><kbd>1</kbd>–<kbd>7</kbd></dt><dd>jump to district</dd>
+              <dt><kbd>0</kbd></dt><dd>city overview</dd>
+              <dt>click</dt><dd>inspect a building</dd>
+              <dt><kbd>⌘K</kbd> / <kbd>Ctrl K</kbd></dt><dd>command palette</dd>
+              <dt><kbd>T</kbd></dt><dd>guided tour</dd>
+              <dt><kbd>L</kbd></dt><dd>cycle labels</dd>
+            </dl>
+          </div>
+          <div>
+            <h3>Simulate</h3>
+            <dl>
+              <dt><kbd>space</kbd></dt><dd>pause / resume</dd>
+              <dt><kbd>[</kbd> <kbd>]</kbd></dt><dd>workload down / up</dd>
+              <dt><kbd>H</kbd> / <kbd>?</kbd></dt><dd>this panel</dd>
+            </dl>
+            <h3>Legend</h3>
+            <ul class="legend" id="legend"></ul>
+          </div>
+        </div>
+        <p class="help-foot">
+          Numbers and defaults follow the MySQL 8.4 reference manual. The simulation is a teaching
+          model of the feedback loops, not an emulator — no server, no database, everything runs in
+          this tab.
+        </p>
+      </div>
+    </div>
+
+    <div class="crosshair" aria-hidden="true"></div>
+
+    <div class="hint" id="hint">
+      <kbd>1</kbd>–<kbd>7</kbd> districts · <kbd>F</kbd> walk · <kbd>T</kbd> tour · <kbd>⌘K</kbd> commands · <kbd>H</kbd> help
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
